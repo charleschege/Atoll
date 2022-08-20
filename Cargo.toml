@@ -1,0 +1,27 @@
+[package]
+name = "atoll"
+version = "0.2.0"
+edition = "2021"
+authors = ["Charles Chege <charleschege@protonmail.ch>"]
+license = "Apache-2.0"
+readme = "README.md"
+description = "A Simple to use Solana Client that has a fast compile time and cache friendly"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.57"
+borsh = "0.9.3"
+bs58 = "0.4.0"
+generic-array = { version = "0.14.6", features = ["serde", "zeroize"] }
+json = "0.12.4"
+minreq = { version = "2.6.0", features = ["https-rustls"] }
+serde = { version = "1.0.143", features = ["derive"] }
+serde_json = "1.0.83"
+smol = "1.2.5"
+web3utilities = { version = "2.0.1", features = [
+    "base58",
+    "random",
+    "ed25519",
+] }
+
+[features]
