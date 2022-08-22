@@ -11,27 +11,37 @@ pub struct RpcRequest {
     jsonrpc: String,
     id: u8,
     method: RpcMethod,
-    value: JsonValue,
-    commitment: Commitment,
+    value: Option<JsonValue>,
     cluster: Cluster,
-    encoding: Encoding,
+    extras: Vec<(String, JsonValue)>,
+}
+
+impl Default for RpcRequest {
+    fn default() -> Self {
+        RpcRequest::new()
+    }
 }
 
 impl RpcRequest {
-    pub fn new(value: JsonValue) -> Self {
+    pub fn new() -> Self {
         RpcRequest {
             jsonrpc: "2.0".to_string(),
             id: 1,
             method: RpcMethod::GetAccountInfo,
-            value,
-            commitment: Commitment::Finalized,
+            value: Option::None,
             cluster: Cluster::DevNet,
-            encoding: Encoding::Base64,
+            extras: Vec::default(),
         }
     }
 
     pub fn change_jsonrpc(mut self, jsonrpc: &str) -> Self {
         self.jsonrpc = jsonrpc.to_owned();
+
+        self
+    }
+
+    pub fn add_value(mut self, value: JsonValue) -> Self {
+        self.value = Some(value);
 
         self
     }
@@ -42,14 +52,14 @@ impl RpcRequest {
         self
     }
 
-    pub fn change_commitment(mut self, commitment: Commitment) -> Self {
-        self.commitment = commitment;
+    pub fn add_method(mut self, method: RpcMethod) -> Self {
+        self.method = method;
 
         self
     }
 
-    pub fn add_method(mut self, method: RpcMethod) -> Self {
-        self.method = method;
+    pub fn add_extra(mut self, key: &str, value: JsonValue) -> Self {
+        self.extras.push((key.to_owned(), value));
 
         self
     }
@@ -60,28 +70,31 @@ impl RpcRequest {
         self
     }
 
-    pub fn change_encoding(mut self, encoding: Encoding) -> Self {
-        self.encoding = encoding;
-
-        self
-    }
-
     pub async fn request<T: fmt::Debug + DeserializeOwned>(self) -> AtollResult<HttpResponse<T>> {
-        let commitment: &str = self.commitment.into();
-        let encoding: &str = self.encoding.into();
         let method = self.method.to_upper_camel_case();
+
+        let mut extra_parameters = json::object::Object::new();
+
+        self.extras.into_iter().for_each(|(key, value)| {
+            extra_parameters.insert(&key, value);
+        });
 
         let json_body = json::object! {
             jsonrpc: self.jsonrpc,
             id: self.id,
             method: method,
-            params: json::array![
-                self.value,
-                json::object! {
-                    commitment: commitment,
-                    encoding: encoding,
-                }
-            ]
+            params: if extra_parameters.is_empty() {
+                json::array![
+                    self.value,
+                ]
+            } else {
+                    json::array![
+                    self.value,
+                    extra_parameters
+                ]
+            }
+
+
         }
         .to_string();
 
@@ -91,8 +104,6 @@ impl RpcRequest {
             .with_timeout(60);
 
         let response = unblock(|| http_client.send()).await?;
-
-        dbg!(&response.as_str());
 
         self.method.parse(response).await
     }
@@ -173,17 +184,6 @@ impl From<&str> for Commitment {
     }
 }
 
-impl<'a> Into<&'a str> for Commitment {
-    fn into(self) -> &'a str {
-        match self {
-            Commitment::Processed => "processed",
-            Commitment::Confirmed => "confirmed",
-            Commitment::Finalized => "finalized",
-            Commitment::InvalidCommitment => "invalid_commitment",
-        }
-    }
-}
-
 /// The encoding for the data format
 #[derive(
     Debug,
@@ -213,16 +213,6 @@ impl From<&str> for Encoding {
             "base58" => Encoding::Base58,
             "base64" => Encoding::Base64,
             _ => Encoding::UnsupportedEncoding,
-        }
-    }
-}
-
-impl<'a> Into<&'a str> for Encoding {
-    fn into(self) -> &'a str {
-        match self {
-            Encoding::Base58 => "base58",
-            Encoding::Base64 => "base64",
-            Encoding::UnsupportedEncoding => "unsupported_encoding",
         }
     }
 }
@@ -269,10 +259,20 @@ pub struct RpcJsonError {
 pub struct JsonError {
     code: i16,
     message: String,
+    data: Option<String>,
 }
 
 #[derive(Debug, BorshSerialize, BorshDeserialize, Deserialize)]
 pub enum RequestOutcome<T> {
     Success(RpcResponse<T>),
     InvalidJson(RpcJsonError),
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, BorshSerialize, BorshDeserialize, Deserialize)]
+pub struct MalformedRequest {
+    jsonrpc: String,
+    id: u8,
+    code: i16,
+    message: String,
+    data: Option<String>,
 }

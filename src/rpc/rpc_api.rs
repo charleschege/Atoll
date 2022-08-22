@@ -7,7 +7,7 @@ type Encoding = String;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetAccountInfo {
-    pub data: (Base64String, Encoding),
+    pub data: (Option<Base64String>, Encoding),
     pub executable: bool,
     pub lamports: u64,
     pub owner: Base58String,

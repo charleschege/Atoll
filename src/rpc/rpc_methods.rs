@@ -1,4 +1,4 @@
-use crate::{AtollResult, HttpResponse, RequestOutcome, RpcJsonError, RpcResponse};
+use crate::{AtollError, AtollResult, HttpResponse, RequestOutcome, RpcJsonError, RpcResponse};
 use core::fmt;
 use serde::de::DeserializeOwned;
 
@@ -6,6 +6,8 @@ use serde::de::DeserializeOwned;
 pub enum RpcMethod {
     GetAccountInfo,
     GetBalance,
+    GetBlock,
+    GetBlockHeight,
 }
 
 impl RpcMethod {
@@ -20,6 +22,12 @@ impl RpcMethod {
                 self.build_http_response::<T>(&response, self.is_ok_or::<T>(response_body)?)
             }
             Self::GetBalance => {
+                self.build_http_response::<T>(&response, self.is_ok_or::<T>(response_body)?)
+            }
+            Self::GetBlock => {
+                self.build_http_response::<T>(&response, self.is_ok_or::<T>(response_body)?)
+            }
+            Self::GetBlockHeight => {
                 self.build_http_response::<T>(&response, self.is_ok_or::<T>(response_body)?)
             }
         };
@@ -40,25 +48,28 @@ impl RpcMethod {
         }
     }
 
-    fn is_ok_or<U: fmt::Debug + DeserializeOwned>(
+    pub fn is_ok_or<T: fmt::Debug + DeserializeOwned>(
         &self,
         response_body: &str,
-    ) -> AtollResult<RequestOutcome<U>> {
-        let outcome = match serde_json::from_str::<RpcResponse<U>>(response_body) {
-            Ok(success) => RequestOutcome::Success(success),
-            Err(_) => match serde_json::from_str::<RpcJsonError>(response_body) {
-                Ok(json_error) => RequestOutcome::InvalidJson(json_error),
-                Err(serde_json_error) => return Err(serde_json_error.into()),
-            },
-        };
+    ) -> AtollResult<RequestOutcome<T>> {
+        let jd = &mut serde_json::Deserializer::from_str(response_body);
 
-        Ok(outcome)
+        let result: Result<RpcResponse<T>, _> = serde_path_to_error::deserialize(jd);
+        match result {
+            Ok(success) => Ok(RequestOutcome::Success(success)),
+            Err(serde_path_error) => match serde_json::from_str::<RpcJsonError>(response_body) {
+                Ok(json_error) => Ok(RequestOutcome::InvalidJson(json_error)),
+                Err(_) => Err(AtollError::SerdeJsonDeser(serde_path_error.to_string())),
+            },
+        }
     }
 
     pub fn to_upper_camel_case(&self) -> &str {
         match self {
             Self::GetAccountInfo => "getAccountInfo",
             Self::GetBalance => "getBalance",
+            Self::GetBlock => "getBlock",
+            Self::GetBlockHeight => "getBlockHeight",
         }
     }
 }
